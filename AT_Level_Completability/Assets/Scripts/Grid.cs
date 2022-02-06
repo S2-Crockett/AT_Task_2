@@ -3,6 +3,8 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Security.Cryptography;
 using Unity.VisualScripting;
 
 public enum MoveObstacles
@@ -36,7 +38,7 @@ public class Grid : MonoBehaviour {
 	public List<GameObject> usableGameObjects = new List<GameObject>();
 
 
-	[SerializeField] private List<Obstacles> ObstaclesList = new List<Obstacles>();
+	public List<Obstacles> ObstaclesList = new List<Obstacles>();
 
 	float nodeDiameter;
 	int gridSizeX, gridSizeY;
@@ -51,11 +53,17 @@ public class Grid : MonoBehaviour {
 	public ChangeObstacles _changeObstacles;
 	private bool checked_ = false;
 	private bool change = true;
-	private bool set = false;
 	private bool set_ = false;
 
 	private GameObject defaultObject;
-	private GameObject newObject;
+	private GameObject[] newObject;
+	
+	[Header("Change Index")] 
+	public bool set = false;
+	public float timer = 2f;
+	public int changeIndex = 0;
+	public int obstacleIndex = 0;
+	public int newObjIndex = 0;
 
 	void Awake() {
 		nodeDiameter = nodeRadius*2;
@@ -91,47 +99,15 @@ public class Grid : MonoBehaviour {
 				{
 					case ChangeObstacles.CheckObstacle:
 					{
-						if (!set_)
-						{
-							defaultObject = _collidedObstacles[0].gameObject;
-							ObstaclesList[0].hitColliders = defaultObject;
-							print(_collidedObstacles[0].gameObject);
-							set_ = true;
-						}
-						
-
-						if (!set)
-						{
-							newObject = Instantiate(changeableGameObjects[0], defaultObject.transform.position,
-								defaultObject.transform.rotation);
-							_collidedObstacles[0].gameObject.SetActive(false);
-							_collidedObstacles.RemoveAt(0);
-
-
-							Transform[] children;
-							children = newObject.GetComponentsInChildren<Transform>();
-							for (int c = 0; c < children.Length - 1; c++)
-							{
-								_newCollidedObstacles.Add(newObject.GetComponentsInChildren<Collider>()[c]);
-							}
-							set = true;
-						}
-
-						_changeObstacles = ChangeObstacles.Wait;
+						CheckObstacle();
 						break;
 					}
 					case ChangeObstacles.Wait:
 					{
-						CheckPath();
-						if (_collided.All(c => c == false) && _collided.Count != 0)
-						{
-							ObstaclesList[0].changeableGameObjects.Add(newObject);
-							_moveObstacles = MoveObstacles.PathCreated;
-						}
+						Wait();
 						break;
 					}
 				}
-				
 				break;
 			}
 			case MoveObstacles.PathCreated:
@@ -143,6 +119,95 @@ public class Grid : MonoBehaviour {
 	}
 
 
+
+	private void CheckObstacle()
+	{
+		if (!set_)
+		{
+			defaultObject = _collidedObstacles[obstacleIndex].gameObject;
+			ObstaclesList[obstacleIndex].hitColliders = defaultObject;
+			print(defaultObject);
+			set_ = true;
+		}
+
+		if (!set)
+		{
+			newObject[newObjIndex] = Instantiate(changeableGameObjects[changeIndex], defaultObject.transform.position,
+				defaultObject.transform.rotation);
+			if (_collidedObstacles[obstacleIndex] != null)
+			{
+				_collidedObstacles[obstacleIndex].gameObject.SetActive(false);
+			}
+			if (newObjIndex > 0)
+			{
+				newObject[newObjIndex - 1].gameObject.SetActive(false);
+			}
+
+			Transform[] children;
+			children = newObject[newObjIndex].GetComponentsInChildren<Transform>();
+			if (children.Length > 0)
+			{
+				for (int c = 0; c < children.Length - 1; c++)
+				{
+					_newCollidedObstacles.Add(newObject[newObjIndex].GetComponentsInChildren<Collider>()[c]);
+				}
+			}
+			else
+			{
+				_newCollidedObstacles.Add(newObject[newObjIndex].GetComponent<Collider>());
+			}
+
+			set = true;
+		}
+		timer = 2.0f;
+		_changeObstacles = ChangeObstacles.Wait;
+	}
+	private void Wait()
+	{
+		CheckPath();
+		timer -= Time.deltaTime;
+		if (timer <= 0)
+		{
+			if (_collided.All(c => c == false) && _collided.Count != 0)
+			{
+				ObstaclesList[obstacleIndex].changeableGameObjects.Add(newObject[newObjIndex]);
+			}
+
+			if (changeIndex < changeableGameObjects.Count - 1)
+			{
+				print("Test 1");
+				changeIndex += 1;
+				newObjIndex += 1;
+				set = false;
+				_changeObstacles = ChangeObstacles.CheckObstacle;
+			}
+			else if (changeIndex == changeableGameObjects.Count - 1 && 
+			         obstacleIndex < _collidedObstacles.Count - 1)
+			{
+				print("Test 2");
+				obstacleIndex += 1;
+				changeIndex = 0;
+				set_ = false;
+				_changeObstacles = ChangeObstacles.CheckObstacle;
+			}
+			else if(changeIndex   == changeableGameObjects.Count - 1 && 
+			        obstacleIndex == _collidedObstacles.Count - 1)
+			{
+				foreach (var obstacles in _collidedObstacles)
+				{
+					obstacles.gameObject.SetActive(true);
+				}
+				for (int i = 0; i < ObstaclesList.Count; i++)
+				{
+					for (int j = 0; j < ObstaclesList[i].changeableGameObjects.Count; j++)
+					{
+						ObstaclesList[i].changeableGameObjects[j].SetActive(false);
+					}
+				}
+				_moveObstacles = MoveObstacles.PathCreated;
+			}
+		}
+	}
 
 
 	public void CheckPath()
@@ -216,9 +281,15 @@ public class Grid : MonoBehaviour {
 				}
 			}
 		}
+
+		foreach (var obstacle in _collidedObstacles)
+		{
+			ObstaclesList.Add(new Obstacles());
+		}
 		
-		ObstaclesList.Add(new Obstacles());
-		print("Created List");
+
+		newObject = new GameObject[changeableGameObjects.Count * _collidedObstacles.Count];
+		print(newObject.Length);
 		_moveObstacles = MoveObstacles.MoveObstacles;
 	}
 	
