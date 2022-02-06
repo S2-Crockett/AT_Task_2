@@ -11,7 +11,8 @@ public enum MoveObstacles
 {
 	CheckObstacles,
 	MoveObstacles,
-	PathCreated
+	PathCreated,
+	Wait
 }
 
 public enum ChangeObstacles
@@ -61,9 +62,11 @@ public class Grid : MonoBehaviour {
 	[Header("Change Index")] 
 	public bool set = false;
 	public float timer = 2f;
+	public float timer_ = 2f;
 	public int changeIndex = 0;
 	public int obstacleIndex = 0;
 	public int newObjIndex = 0;
+	public int checkIndex = 0;
 
 	void Awake() {
 		nodeDiameter = nodeRadius*2;
@@ -88,8 +91,20 @@ public class Grid : MonoBehaviour {
 			{
 				if (!checked_)
 				{
-					StartCoroutine(CheckObstacles());
+					StartCoroutine(CheckObstacles(checkIndex));
+					timer_ = 2f;
 					checked_ = true;
+				}
+				break;
+			}
+			case MoveObstacles.Wait:
+			{
+				timer_ -= Time.deltaTime;
+				if (timer_ <= 0)
+				{
+					checked_ = false;
+					checkIndex += 1;
+					_moveObstacles = MoveObstacles.CheckObstacles;
 				}
 				break;
 			}
@@ -129,7 +144,6 @@ public class Grid : MonoBehaviour {
 			print(defaultObject);
 			set_ = true;
 		}
-
 		if (!set)
 		{
 			newObject[newObjIndex] = Instantiate(changeableGameObjects[changeIndex], defaultObject.transform.position,
@@ -236,7 +250,7 @@ public class Grid : MonoBehaviour {
 		}
 	}
 	
-	IEnumerator CheckObstacles()
+	IEnumerator CheckObstacles(int index)
 	{
 		yield return new WaitForSeconds(1f);
 
@@ -245,21 +259,16 @@ public class Grid : MonoBehaviour {
 		if (_collided.All(c => c == false) && _collided.Count != 0)
 		{
 			_moveObstacles = MoveObstacles.PathCreated;
-			StopCoroutine(CheckObstacles());
+			StopCoroutine(CheckObstacles(0));
 		}
 		else
 		{
-			foreach (var objects in hitColliders)
-			{
-				objects.gameObject.gameObject.layer = 7;
-			}
+			hitColliders[index].gameObject.gameObject.layer = 7;
 		}
 		yield return new WaitForSeconds(2f);
 		
-		foreach (var objects in hitColliders)
-		{
-			objects.gameObject.gameObject.layer = 6;
-		}
+		hitColliders[index].gameObject.gameObject.layer = 6;
+		
 		if (grid != null && path != null)
 		{
 			foreach (Node n in grid)
@@ -289,8 +298,15 @@ public class Grid : MonoBehaviour {
 		
 
 		newObject = new GameObject[changeableGameObjects.Count * _collidedObstacles.Count];
-		print(newObject.Length);
-		_moveObstacles = MoveObstacles.MoveObstacles;
+		if (_collidedObstacles.Count == 0)
+		{
+			_moveObstacles = MoveObstacles.Wait;
+		}
+		else
+		{
+			_moveObstacles = MoveObstacles.MoveObstacles;
+		}
+
 	}
 	
 	
@@ -307,7 +323,6 @@ public class Grid : MonoBehaviour {
 			}
 		}
 	}
-
 	public List<Node> GetNeighbours(Node node) {
 		List<Node> neighbours = new List<Node>();
 
@@ -328,7 +343,6 @@ public class Grid : MonoBehaviour {
 		return neighbours;
 	}
 	
-
 	public Node NodeFromWorldPoint(Vector3 worldPosition) {
 		float percentX = (worldPosition.x + gridWorldSize.x/2) / gridWorldSize.x;
 		float percentY = (worldPosition.z + gridWorldSize.y/2) / gridWorldSize.y;
