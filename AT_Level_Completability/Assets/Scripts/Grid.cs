@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
 using Unity.VisualScripting;
+using UnityEngine.Serialization;
 
 public enum MoveObstacles
 {
@@ -25,32 +26,34 @@ public enum ChangeObstacles
 public class Grid : MonoBehaviour {
 
 	public LayerMask unwalkableMask;
-	public Vector2 gridWorldSize;
+	public Vector2 gridSize;
 	public float nodeRadius;
-	Node[,] grid;
+	private Node[,] grid;
 	
-	public Collider[] hitColliders;
+	private Collider[] hitColliders;
 
-	public List<Collider> _collidedObstacles = new List<Collider>();
-	public List<Collider> _newCollidedObstacles = new List<Collider>();
-	public List<bool> _collided = new List<bool>();
+	private List<Collider> _collidedObstacles = new List<Collider>();
+	private List<Collider> _newCollidedObstacles = new List<Collider>();
+	private List<bool> _collided = new List<bool>();
 
 	public List<GameObject> changeableGameObjects = new List<GameObject>();
-	public List<GameObject> usableGameObjects = new List<GameObject>();
+	private List<GameObject> usableGameObjects = new List<GameObject>();
 
-
+	[HideInInspector]
 	public List<Obstacles> ObstaclesList = new List<Obstacles>();
 
-	float nodeDiameter;
-	int gridSizeX, gridSizeY;
+	private float nodeDiameter;
+	private int gridX, gridY;
 
-	private Vector3 worldBottomLeft;
+	private Vector3 gridStart;
 	
 	private bool moved = false;
 
 	private int index = 0;
 
+	[HideInInspector]
 	public MoveObstacles _moveObstacles;
+	[HideInInspector]
 	public ChangeObstacles _changeObstacles;
 	private bool checked_ = false;
 	private bool change = true;
@@ -59,19 +62,18 @@ public class Grid : MonoBehaviour {
 	private GameObject defaultObject;
 	private GameObject[] newObject;
 	
-	[Header("Change Index")] 
-	public bool set = false;
-	public float timer = 2f;
-	public float timer_ = 2f;
-	public int changeIndex = 0;
-	public int obstacleIndex = 0;
-	public int newObjIndex = 0;
-	public int checkIndex = 0;
+	private bool set = false;
+	private float timer = 2f;
+	private float timer_ = 2f;
+	private int changeIndex = 0;
+	private int obstacleIndex = 0;
+	private int newObjIndex = 0;
+	private int checkIndex = 0;
 
 	void Awake() {
 		nodeDiameter = nodeRadius*2;
-		gridSizeX = Mathf.RoundToInt(gridWorldSize.x/nodeDiameter);
-		gridSizeY = Mathf.RoundToInt(gridWorldSize.y/nodeDiameter);
+		gridX = Mathf.RoundToInt(gridSize.x/nodeDiameter);
+		gridY = Mathf.RoundToInt(gridSize.y/nodeDiameter);
 		CreateGrid();
 		hitColliders = new Collider[GameObject.FindGameObjectsWithTag("Obstacle").Length];
 		foreach (var obstacle in GameObject.FindGameObjectsWithTag("Obstacle"))
@@ -92,7 +94,7 @@ public class Grid : MonoBehaviour {
 				if (!checked_)
 				{
 					StartCoroutine(CheckObstacles(checkIndex));
-					timer_ = 2f;
+					timer_ = 1f;
 					checked_ = true;
 				}
 				break;
@@ -132,9 +134,6 @@ public class Grid : MonoBehaviour {
 			}
 		}
 	}
-
-
-
 	private void CheckObstacle()
 	{
 		if (!set_)
@@ -222,8 +221,6 @@ public class Grid : MonoBehaviour {
 			}
 		}
 	}
-
-
 	public void CheckPath()
 	{
 		_collided.Clear();
@@ -265,7 +262,7 @@ public class Grid : MonoBehaviour {
 		{
 			hitColliders[index].gameObject.gameObject.layer = 7;
 		}
-		yield return new WaitForSeconds(2f);
+		yield return new WaitForSeconds(1f);
 		
 		hitColliders[index].gameObject.gameObject.layer = 6;
 		
@@ -312,29 +309,32 @@ public class Grid : MonoBehaviour {
 	
 	
 	void CreateGrid() {
-		grid = new Node[gridSizeX,gridSizeY];
-		worldBottomLeft = transform.position - Vector3.right * gridWorldSize.x/2 - Vector3.forward * gridWorldSize.y/2;
+		grid = new Node[gridX,gridY];
+		gridStart = transform.position - Vector3.right * gridSize.x/2 - Vector3.forward * gridSize.y/2;
 
-		for (int x = 0; x < gridSizeX; x ++) {
-			for (int y = 0; y < gridSizeY; y ++) {
-				Vector3 worldPoint = worldBottomLeft + Vector3.right * (x * nodeDiameter + nodeRadius) + Vector3.forward * (y * nodeDiameter + nodeRadius);
+		for (int x = 0; x < gridX; x ++) {
+			for (int y = 0; y < gridY; y ++) {
+				Vector3 worldPoint = gridStart + Vector3.right * (x * nodeDiameter + nodeRadius) + Vector3.forward * (y * nodeDiameter + nodeRadius);
 				bool walkable = !(Physics.CheckSphere(worldPoint,nodeRadius,unwalkableMask));
 				grid[x,y] = new Node(walkable,worldPoint, x,y);
 			}
 		}
 	}
-	public List<Node> GetNeighbours(Node node) {
+	public List<Node> CheckNeighbours(Node node) {
 		List<Node> neighbours = new List<Node>();
 
 		for (int x = -1; x <= 1; x++) {
 			for (int y = -1; y <= 1; y++) {
 				if (x == 0 && y == 0)
+				{
 					continue;
-
+				}
 				int checkX = node.gridX + x;
 				int checkY = node.gridY + y;
 
-				if (checkX >= 0 && checkX < gridSizeX && checkY >= 0 && checkY < gridSizeY) {
+				if (checkX >= 0 && checkX < gridX && 
+				    checkY >= 0 && checkY < gridY) 
+				{
 					neighbours.Add(grid[checkX,checkY]);
 				}
 			}
@@ -343,34 +343,34 @@ public class Grid : MonoBehaviour {
 		return neighbours;
 	}
 	
-	public Node NodeFromWorldPoint(Vector3 worldPosition) {
-		float percentX = (worldPosition.x + gridWorldSize.x/2) / gridWorldSize.x;
-		float percentY = (worldPosition.z + gridWorldSize.y/2) / gridWorldSize.y;
-		percentX = Mathf.Clamp01(percentX);
-		percentY = Mathf.Clamp01(percentY);
+	public Node GetNodeAtWorldPoint(Vector3 worldPosition) {
+		float xPos = (worldPosition.x + gridSize.x/2) / gridSize.x;
+		float yPos = (worldPosition.z + gridSize.y/2) / gridSize.y;
+		xPos = Mathf.Clamp01(xPos);
+		yPos = Mathf.Clamp01(yPos);
 
-		int x = Mathf.RoundToInt((gridSizeX-1) * percentX);
-		int y = Mathf.RoundToInt((gridSizeY-1) * percentY);
+		int x = Mathf.RoundToInt((gridX-1) * xPos);
+		int y = Mathf.RoundToInt((gridY-1) * yPos);
 		return grid[x,y];
 	}
 
 	public List<Node> path;
 	void OnDrawGizmos() {
-		Gizmos.DrawWireCube(transform.position,new Vector3(gridWorldSize.x,1,gridWorldSize.y));
+		Gizmos.DrawWireCube(transform.position,new Vector3(gridSize.x,1,gridSize.y));
 
 		if (grid != null) {
 			foreach (Node n in grid) {
-				Gizmos.color = (n.walkable)?Color.white:Color.red;
+				Gizmos.color = (n.walkable)?Color.white:Color.black;
 				if (path != null)
 					if (path.Contains(n))
-						Gizmos.color = Color.black;
+						Gizmos.color = Color.blue;
 				Gizmos.DrawCube(n.worldPosition, Vector3.one * (nodeDiameter-.1f));
 			}
-			for (int x = 0; x < gridSizeX; x++)
+			for (int x = 0; x < gridX; x++)
 			{
-				for (int y = 0; y < gridSizeY; y++)
+				for (int y = 0; y < gridY; y++)
 				{
-					Vector3 worldPoint = worldBottomLeft + Vector3.right * (x * nodeDiameter + nodeRadius) +
+					Vector3 worldPoint = gridStart + Vector3.right * (x * nodeDiameter + nodeRadius) +
 					                     Vector3.forward * (y * nodeDiameter + nodeRadius);
                     
 					bool clear = !(Physics.CheckSphere(worldPoint, nodeRadius, unwalkableMask));
